@@ -49,14 +49,18 @@ def get_nifty200_stocks():
             symbols = df["Symbol"].dropna().tolist()
             # Add .NS suffix for Yahoo Finance
             yf_symbols = [f"{s.strip()}.NS" for s in symbols if s.strip()]
-            print(f" Live Nifty 200 fetched: {len(yf_symbols)} stocks")
+            print(f"
+ Live Nifty 200 fetched: {len(yf_symbols)} stocks")
             return yf_symbols
     except Exception as e:
         print(f"
+
  Could not fetch live Nifty 200 list: {e}")
         print("  Using backup stock list instead...")
-    print(f" Using backup list: {len(NIFTY200_FALLBACK)} stocks")
+    print(f"
+ Using backup list: {len(NIFTY200_FALLBACK)} stocks")
     return NIFTY200_FALLBACK
+
 
 # ============================================================
 # 2. PRICE AND TECHNICAL INDICATORS
@@ -65,18 +69,18 @@ def get_nifty200_stocks():
 def calculate_rsi(prices, period=14):
     """Calculate RSI (Relative Strength Index) - measures momentum."""
     delta = prices.diff()
-    gain = delta.where(delta > 0, 0).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-    rs = gain / (loss + 1e-10)  # avoid division by zero
+    gain  = delta.where(delta > 0, 0).rolling(period).mean()
+    loss  = (-delta.where(delta < 0, 0)).rolling(period).mean()
+    rs    = gain / (loss + 1e-10)  # avoid division by zero
     return 100 - (100 / (1 + rs))
 
 def calculate_macd(prices, fast=12, slow=26, signal=9):
     """Calculate MACD - measures trend direction."""
-    ema_fast = prices.ewm(span=fast, adjust=False).mean()
-    ema_slow = prices.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
+    ema_fast    = prices.ewm(span=fast,   adjust=False).mean()
+    ema_slow    = prices.ewm(span=slow,   adjust=False).mean()
+    macd_line   = ema_fast - ema_slow
     signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
+    histogram   = macd_line - signal_line
     return macd_line, signal_line, histogram
 
 def get_stock_technicals(symbol):
@@ -90,7 +94,7 @@ def get_stock_technicals(symbol):
     """
     try:
         ticker = yf.Ticker(symbol)
-        hist = ticker.history(period="1y", auto_adjust=True)
+        hist   = ticker.history(period="1y", auto_adjust=True)
         if hist.empty or len(hist) < 50:
             return None
 
@@ -160,6 +164,7 @@ def get_stock_technicals(symbol):
     except Exception as e:
         return None
 
+
 # ============================================================
 # 3. FUNDAMENTAL DATA
 # ============================================================
@@ -182,8 +187,7 @@ def get_stock_fundamentals(symbol):
         if not info or info.get("regularMarketPrice") is None:
             return None
 
-        # Key fundamental metrics
-        pe_ratio        = info.get("trailingPE") or info.get("forwardPE")
+        pe_ratio        = info.get("trailingPE")    or info.get("forwardPE")
         pb_ratio        = info.get("priceToBook")
         roe             = info.get("returnOnEquity")
         debt_to_equity  = info.get("debtToEquity")
@@ -202,34 +206,35 @@ def get_stock_fundamentals(symbol):
         company_name    = info.get("longName",  symbol)
 
         # Convert to percentage where needed
-        roe_pct             = round(roe * 100, 1)             if roe             else None
-        dividend_yield_pct  = round(dividend_yield * 100, 2)  if dividend_yield  else None
-        revenue_growth_pct  = round(revenue_growth * 100, 1)  if revenue_growth  else None
-        earnings_growth_pct = round(earnings_growth * 100, 1) if earnings_growth else None
-        profit_margins_pct  = round(profit_margins * 100, 1)  if profit_margins  else None
+        roe_pct             = round(roe * 100, 1)            if roe             else None
+        dividend_yield_pct  = round(dividend_yield * 100, 2) if dividend_yield  else None
+        revenue_growth_pct  = round(revenue_growth * 100, 1) if revenue_growth  else None
+        earnings_growth_pct = round(earnings_growth * 100, 1)if earnings_growth else None
+        profit_margins_pct  = round(profit_margins * 100, 1) if profit_margins  else None
 
         return {
             "symbol"             : symbol,
             "company_name"       : company_name,
             "sector"             : sector,
             "industry"           : industry,
-            "pe_ratio"           : round(pe_ratio, 1)           if pe_ratio        else None,
-            "pb_ratio"           : round(pb_ratio, 2)           if pb_ratio        else None,
+            "pe_ratio"           : round(pe_ratio, 1)        if pe_ratio        else None,
+            "pb_ratio"           : round(pb_ratio, 2)        if pb_ratio        else None,
             "roe_pct"            : roe_pct,
-            "debt_to_equity"     : round(debt_to_equity, 2)     if debt_to_equity  else None,
-            "market_cap_cr"      : round(market_cap / 1e7, 0)   if market_cap      else None,
+            "debt_to_equity"     : round(debt_to_equity, 2)  if debt_to_equity  else None,
+            "market_cap_cr"      : round(market_cap / 1e7, 0)if market_cap      else None,
             "dividend_yield_pct" : dividend_yield_pct,
             "revenue_growth_pct" : revenue_growth_pct,
             "earnings_growth_pct": earnings_growth_pct,
             "profit_margins_pct" : profit_margins_pct,
-            "gross_margins_pct"  : round(gross_margins * 100, 1) if gross_margins  else None,
-            "current_ratio"      : round(current_ratio, 2)       if current_ratio  else None,
-            "eps"                : round(eps, 2)                  if eps            else None,
-            "beta"               : round(beta, 2)                 if beta           else None,
-            "book_value"         : round(book_value, 2)           if book_value     else None,
+            "gross_margins_pct"  : round(gross_margins * 100, 1) if gross_margins else None,
+            "current_ratio"      : round(current_ratio, 2)   if current_ratio   else None,
+            "eps"                : round(eps, 2)              if eps             else None,
+            "beta"               : round(beta, 2)             if beta            else None,
+            "book_value"         : round(book_value, 2)       if book_value      else None,
         }
     except Exception as e:
         return None
+
 
 # ============================================================
 # 4. GLOBAL MARKETS AND MACRO DATA
@@ -264,8 +269,10 @@ def get_global_macro():
                 }
         except Exception as e:
             macro[name] = {"value": None, "change_pct": None, "direction": "UNKNOWN"}
-    print(f" Global macro fetched for {len(macro)} indicators")
+    print(f"
+ Global macro fetched for {len(macro)} indicators")
     return macro
+
 
 # ============================================================
 # 5. NSE OFFICIAL DATA DOWNLOADS (Legal, free, official files)
@@ -286,6 +293,7 @@ def get_nse_bhavcopy():
             date = today - timedelta(days=days_back)
             if date.weekday() >= 5:  # Skip Saturday(5) and Sunday(6)
                 continue
+            date_str = date.strftime("%d%m%Y")
             url = (
                 f"https://nsearchives.nseindia.com/content/cm/"
                 f"BhavCopy_NSE_CM_0_0_0_{date.strftime('%Y%m%d')}_F_0000.csv"
@@ -297,15 +305,19 @@ def get_nse_bhavcopy():
             resp = requests.get(url, headers=headers, timeout=20)
             if resp.status_code == 200:
                 df = pd.read_csv(io.StringIO(resp.text))
-                print(f" Bhavcopy downloaded for {date.strftime('%d %b %Y')}: {len(df)} records")
+                print(f"
+ Bhavcopy downloaded for {date.strftime('%d %b %Y')}: {len(df)} records")
                 return df
         print("
+
  Could not download Bhavcopy (might be holiday). Using yFinance instead.")
         return None
     except Exception as e:
         print(f"
+
  Bhavcopy download failed: {e}")
         return None
+
 
 def get_fii_dii_data():
     """
@@ -343,26 +355,27 @@ def get_fii_dii_data():
                             pass
 
                 result = {
-                    "fii_net_cr" : fii_net,
-                    "dii_net_cr" : dii_net,
-                    "fii_signal" : "BUYING" if fii_net and fii_net > 0 else "SELLING" if fii_net else "UNKNOWN",
-                    "dii_signal" : "BUYING" if dii_net and dii_net > 0 else "SELLING" if dii_net else "UNKNOWN",
-                    "source"     : "NSE Official",
+                    "fii_net_cr": fii_net,
+                    "dii_net_cr": dii_net,
+                    "fii_signal": "BUYING" if fii_net and fii_net > 0 else "SELLING" if fii_net else "UNKNOWN",
+                    "dii_signal": "BUYING" if dii_net and dii_net > 0 else "SELLING" if dii_net else "UNKNOWN",
+                    "source"    : "NSE Official",
                 }
-                print(f" FII: {fii_net} Cr | DII: {dii_net} Cr")
+                print(f"
+ FII: {fii_net} Cr | DII: {dii_net} Cr")
                 return result
     except Exception as e:
         print(f"
+
  FII/DII data unavailable: {e}")
 
     # Return unknown state if fetch fails
     return {
-        "fii_net_cr" : None,
-        "dii_net_cr" : None,
-        "fii_signal" : "UNKNOWN",
-        "dii_signal" : "UNKNOWN",
-        "source"     : "unavailable"
+        "fii_net_cr": None, "dii_net_cr": None,
+        "fii_signal": "UNKNOWN", "dii_signal": "UNKNOWN",
+        "source"    : "unavailable"
     }
+
 
 # ============================================================
 # 6. BATCH STOCK DATA FETCHER
@@ -374,19 +387,16 @@ def get_all_stocks_data(symbols, max_stocks=None):
     all Nifty 200 stocks. Shows progress.
     Returns a list of dicts, one per stock.
     """
-    import time
-
     if max_stocks:
         symbols = symbols[:max_stocks]
-    total = len(symbols)
-
+    total   = len(symbols)
     results = []
     failed  = []
 
     print(f"
 
  Fetching data for {total} Nifty 200 stocks...")
-    print(" (This takes 10-15 minutes on first run — be patient)
+    print("  (This takes 10-15 minutes on first run — be patient)
 ")
 
     for i, symbol in enumerate(symbols):
@@ -410,6 +420,7 @@ def get_all_stocks_data(symbols, max_stocks=None):
             results.append(stock_data)
 
         # Small delay to avoid rate limiting
+        import time
         time.sleep(0.3)
 
     print(f"
@@ -417,5 +428,4 @@ def get_all_stocks_data(symbols, max_stocks=None):
  Data fetched: {len(results)} stocks successful, {len(failed)} failed")
     if failed:
         print(f"  Failed stocks: {', '.join(failed[:10])}{'...' if len(failed) > 10 else ''}")
-
     return results
