@@ -1,0 +1,36 @@
+# ===================================================
+# SECURITY - These files will NEVER go to GitHub
+# ===================================================
+
+# Secret keys - NEVER commit these!
+.env
+.streamlit/secrets.toml
+secrets.toml
+
+# Python cache files (auto-generated, not needed)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Data files (can be large)
+*.csv
+briefing_*.json
+memory/
+logs/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
