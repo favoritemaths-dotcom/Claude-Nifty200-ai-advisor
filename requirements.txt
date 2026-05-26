@@ -5,7 +5,6 @@ streamlit>=1.31.0
 google-generativeai>=0.4.1
 requests>=2.31.0
 feedparser>=6.0.11
-pandas-ta>=0.3.14b0
 plotly>=5.18.0
 python-dotenv>=1.0.0
 pytz>=2024.1
