@@ -1,1 +1,88 @@
+name: Nifty 200 AI Morning Briefing
 
+on:
+  # Runs at 8:30 AM IST (3:00 AM UTC) Monday to Friday
+  schedule:
+    - cron: '0 3 * * 1-5'
+  
+  # Also allows manual trigger from GitHub website
+  workflow_dispatch:
+    inputs:
+      quick_mode:
+        description: 'Quick mode (30 stocks only for testing)?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  run-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      # Step 1: Download your code from GitHub
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      # Step 3: Install all required packages
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      # Step 4: Run the analysis agent
+      - name: Run Nifty 200 AI Analysis
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.quick_mode }}" = "true" ]; then
+            echo "Running in QUICK mode (30 stocks)"
+            python agent.py --quick
+          else
+            echo "Running FULL analysis (all Nifty 200 stocks)"
+            python agent.py
+          fi
+      
+      # Step 5: Save the briefing file back to the repository
+      # This is how Streamlit Cloud reads the latest briefing
+      - name: Save Briefing to Repository
+        if: always()
+        run: |
+          git config --global user.name "Nifty AI Bot"
+          git config --global user.email "bot@nifty200ai.com"
+          git add latest_briefing.json || true
+          git diff --staged --quiet || git commit -m "■ Briefing update $(date +'%Y-%m-%d %H:%M IST')"
+          git push || true
+      
+      # Step 6: Show summary
+      - name: Show Run Summary
+        if: always()
+        run: |
+          echo "========================================"
+          echo "Analysis completed at $(date)"
+          echo "========================================"
+          if [ -f latest_briefing.json ]; then
+            echo "Briefing file size: $(wc -c < latest_briefing.json) bytes"
+            python -c "
+import json
+with open('latest_briefing.json') as f:
+    b = json.load(f)
+    print(f'Status: {b.get(\"status\",\"unknown\")}')
+    print(f'Stocks scored: {b.get(\"stocks_scored\",0)}')
+    print(f'Top picks: {len(b.get(\"top_picks\",[]))}')
+    top = b.get('top_picks',[])[:5]
+    for p in top:
+        print(f' {p[\"score\"]}/100 {p[\"signal\"]:5s} {p[\"symbol\"]}')
+            "
+          fi
