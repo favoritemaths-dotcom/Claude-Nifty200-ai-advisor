@@ -87,18 +87,18 @@ with st.sidebar:
 
     # Manual run button
     if st.button("▶️ Run Analysis Now", type="primary", use_container_width=True):
-        with st.spinner("Running analysis... (10-15 minutes for full run)"):
+        with st.spinner("Running analysis... (1-3 hours for full run)"):
             try:
                 result = subprocess.run(
-                    [sys.executable, "agent.py", "--quick"],
-                    capture_output=True, text=True, timeout=1800
+                    [sys.executable, "agent.py"],
+                    capture_output=True, text=True, timeout=10800
                 )
                 if result.returncode == 0:
                     st.success("✅ Analysis complete! Refresh the page.")
                 else:
                     st.error(f"Analysis failed: {result.stderr[:500]}")
             except subprocess.TimeoutExpired:
-                st.error("Analysis timed out after 30 minutes")
+                st.error("Analysis timed out after 3 hours")
             except Exception as e:
                 st.error(f"Error: {e}")
 
