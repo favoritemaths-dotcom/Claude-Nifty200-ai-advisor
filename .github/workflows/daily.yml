@@ -55,14 +55,13 @@ jobs:
           fi
       
       # Step 5: Save the briefing file back to the repository
-      # This is how Streamlit Cloud reads the latest briefing
       - name: Save Briefing to Repository
         if: always()
         run: |
           git config --global user.name "Nifty AI Bot"
           git config --global user.email "bot@nifty200ai.com"
           git add latest_briefing.json || true
-          git diff --staged --quiet || git commit -m "■ Briefing update $(date +'%Y-%m-%d %H:%M IST')"
+          git diff --staged --quiet || git commit -m "Briefing update $(date +'%Y-%m-%d %H:%M IST')"
           git push || true
       
       # Step 6: Show summary
@@ -73,16 +72,6 @@ jobs:
           echo "Analysis completed at $(date)"
           echo "========================================"
           if [ -f latest_briefing.json ]; then
-            echo "Briefing file size: $(wc -c < latest_briefing.json) bytes"
-            python -c "
-import json
-with open('latest_briefing.json') as f:
-    b = json.load(f)
-    print(f'Status: {b.get(\"status\",\"unknown\")}')
-    print(f'Stocks scored: {b.get(\"stocks_scored\",0)}')
-    print(f'Top picks: {len(b.get(\"top_picks\",[]))}')
-    top = b.get('top_picks',[])[:5]
-    for p in top:
-        print(f' {p[\"score\"]}/100 {p[\"signal\"]:5s} {p[\"symbol\"]}')
-            "
+            echo "Briefing file exists"
+            wc -c < latest_briefing.json
           fi
