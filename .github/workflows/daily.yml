@@ -3,7 +3,7 @@ name: Nifty 200 AI Morning Briefing
 on:
   # Runs at 8:30 AM IST (3:00 AM UTC) Monday to Friday
   schedule:
-    - cron: '0 3 * * 1-5'
+    - cron: '0 2 * * 1-5'
   
   # Also allows manual trigger from GitHub website
   workflow_dispatch:
