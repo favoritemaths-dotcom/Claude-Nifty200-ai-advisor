@@ -476,7 +476,7 @@ if all_scores:
             return ""
 
         st.dataframe(
-            df_display.style.applymap(color_signal, subset=["Signal"]),
+            df_display.style.map(color_signal, subset=["Signal"]),
             use_container_width=True,
             height=400,
         )
