@@ -91,7 +91,7 @@ with st.sidebar:
             try:
                 result = subprocess.run(
                     [sys.executable, "agent.py"],
-                    capture_output=True, text=True, timeout=10800
+                    capture_output=True, text=True, timeout=14800
                 )
                 if result.returncode == 0:
                     st.success("✅ Analysis complete! Refresh the page.")
@@ -110,7 +110,7 @@ with st.sidebar:
             try:
                 result = subprocess.run(
                     [sys.executable, "agent.py", "--quick"],
-                    capture_output=True, text=True, timeout=600
+                    capture_output=True, text=True, timeout=3600
                 )
                 if result.returncode == 0:
                     st.success("✅ Done! Refresh page.")
