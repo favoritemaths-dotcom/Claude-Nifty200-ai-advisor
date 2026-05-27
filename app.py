@@ -110,7 +110,7 @@ with st.sidebar:
             try:
                 result = subprocess.run(
                     [sys.executable, "agent.py", "--quick"],
-                    capture_output=True, text=True, timeout=3600
+                    capture_output=True, text=True, timeout=4000
                 )
                 if result.returncode == 0:
                     st.success("✅ Done! Refresh page.")
