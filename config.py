@@ -7,7 +7,7 @@ DO NOT put your actual API keys here - use Streamlit Secrets instead.
 """
 
 import os
-import streamlit as st
+# streamlit is now imported INSIDE get_secret() only
 
 # ─────────────────────────────────────────────────────────────
 # STEP 1: API KEYS
