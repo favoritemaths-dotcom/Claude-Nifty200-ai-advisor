@@ -12,7 +12,7 @@ Implements:
 The AI EXPLAINS the deterministic scores — it doesn't invent them.
 """
 
-import google.generativeai as genai
+import google.genai as genai
 import json
 import re
 import time
