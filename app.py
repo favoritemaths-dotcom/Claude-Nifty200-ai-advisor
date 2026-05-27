@@ -15,7 +15,15 @@ import subprocess
 import sys
 from datetime import datetime
 import pytz
-
+import traceback
+try:
+    import config  # test import all your modules
+    import scoring
+    import regime
+except Exception as e:
+    st.error("**Startup import failed:**")
+    st.code(traceback.format_exc())
+    st.stop()
 # ── Page config (must be first Streamlit command) ────────────
 st.set_page_config(
     page_title = "Nifty 200 AI Advisor",
