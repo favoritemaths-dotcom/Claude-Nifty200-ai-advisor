@@ -12,7 +12,7 @@ Implements:
 The AI EXPLAINS the deterministic scores — it doesn't invent them.
 """
 
-import google.genai as genai
+import google as genai
 import json
 import re
 import time
@@ -22,17 +22,10 @@ from config import AI_SETTINGS
 # SETUP GEMINI
 # ─────────────────────────────────────────────────────────────
 
+# NEW:
 def setup_gemini(api_key):
-    """Initialise Gemini with your API key."""
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(
-        model_name=AI_SETTINGS["model"],
-        generation_config=genai.types.GenerationConfig(
-            temperature=AI_SETTINGS["temperature"],
-            max_output_tokens=AI_SETTINGS["max_tokens"],
-        )
-    )
-    return model
+    client = genai.Client(api_key=api_key)
+    return client
 
 
 def call_gemini(model, prompt, max_retries=3):
@@ -42,7 +35,10 @@ def call_gemini(model, prompt, max_retries=3):
     """
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(prompt)
+            response =  clinet.models.generate_content(
+                model=AI_SETTINGS["model"],
+                contents=prompt
+            )
             return response.text
         except Exception as e:
             error_msg = str(e)
