@@ -173,13 +173,16 @@ NIFTY200_FALLBACK = [
 
 # ─────────────────────────────────────────────────────────────
 # STEP 9: AI PROMPTING SETTINGS
+# FIX #1: Updated from deprecated gemini-1.5-flash to gemini-2.0-flash
+# gemini-1.5-flash was deprecated in early 2026 and returns 404 errors,
+# causing every stock's AI analysis to silently return None (blank output).
 # ─────────────────────────────────────────────────────────────
 
 AI_SETTINGS = {
-    "model"           : "gemini-1.5-flash",   # Free Gemini model
-    "temperature"     : 0.2,                   # Low = consistent analysis
+    "model"           : "gemini-3.5-flash",    # FIX: was "gemini-1.5-flash" (deprecated/404)
+    "temperature"     : 0.2,                    # Low = consistent analysis
     "max_tokens"      : 2048,
-    "backup_model"    : "llama3-70b-8192",     # Groq backup
+    "backup_model"    : "llama3-70b-8192",      # Groq backup
 }
 
 # Timezone for India
