@@ -30,6 +30,12 @@ def detect_market_regime(global_macro, fii_dii_data):
         description: what this means for trading
         color: for Streamlit display
         recommendations: how to trade in this regime
+
+    FIX #3: Replaced all `(fii_net and fii_net > X)` patterns with explicit
+    None-checks. In Python, `None and None > 0` evaluates to None (falsy),
+    meaning FII conditions were ALWAYS skipped when fii_net was None,
+    forcing the regime to always default to SIDEWAYS regardless of VIX or
+    Nifty direction. This was suppressing valid BUY signals.
     """
 
     # ── Extract key signals ──────────────────────────────────
@@ -50,11 +56,30 @@ def detect_market_regime(global_macro, fii_dii_data):
     if fii_dii_data:
         fii_net = fii_dii_data.get("fii_net_cr")
 
+    # ── Pre-compute boolean flags (None-safe) ─────────────────
+    # FIX: use explicit `is not None` checks instead of truthiness.
+    # Previously `(fii_net and fii_net > 0)` treated fii_net=0 as False too,
+    # which was also wrong. Now 0 is correctly treated as "not buying".
+    fii_is_known      = fii_net is not None
+    fii_buying        = fii_is_known and fii_net > 0
+    fii_buying_strong = fii_is_known and fii_net > REGIME_CFG["fii_buy_signal"]
+    fii_selling_heavy = fii_is_known and fii_net < REGIME_CFG["fii_sell_alarm"]
+
+    vix_is_known      = india_vix is not None
+    vix_panic         = vix_is_known and india_vix > REGIME_CFG["vix_panic"]
+    vix_caution       = vix_is_known and india_vix > REGIME_CFG["vix_caution"]
+    vix_normal        = vix_is_known and india_vix <= REGIME_CFG["vix_normal"]
+    vix_calm          = vix_is_known and india_vix < REGIME_CFG["vix_calm"]
+    vix_volatile      = vix_is_known and REGIME_CFG["vix_normal"] < india_vix <= REGIME_CFG["vix_caution"]
+
+    nifty_crash       = nifty_chg is not None and nifty_chg < -3.0
+    nifty_positive    = nifty_chg is not None and nifty_chg > 0
+    nifty_stable      = nifty_chg is None or nifty_chg >= -0.5
+
     # ── Determine regime ─────────────────────────────────────
 
     # PANIC: VIX > 25 or Nifty down > 3% in a day
-    if (india_vix and india_vix > REGIME_CFG["vix_panic"]) or \
-       (nifty_chg and nifty_chg < -3.0):
+    if vix_panic or nifty_crash:
         return {
             "regime"     : "PANIC",
             "label"      : "⚫ PANIC / CRASH MODE",
@@ -78,8 +103,7 @@ def detect_market_regime(global_macro, fii_dii_data):
         }
 
     # RISK_OFF: VIX 21-25 or FIIs selling heavily
-    if (india_vix and india_vix > REGIME_CFG["vix_caution"]) or \
-       (fii_net and fii_net < REGIME_CFG["fii_sell_alarm"]):
+    if vix_caution or fii_selling_heavy:
         return {
             "regime"     : "RISK_OFF",
             "label"      : "🔴 RISK-OFF — Defensive Mode",
@@ -103,10 +127,8 @@ def detect_market_regime(global_macro, fii_dii_data):
             }
         }
 
-    # RECOVERY: Low VIX, FIIs buying, recovering from recent falls
-    if (india_vix and india_vix < REGIME_CFG["vix_calm"]) and \
-       (fii_net and fii_net > REGIME_CFG["fii_buy_signal"]) and \
-       (nifty_chg and nifty_chg > 0):
+    # RECOVERY: Low VIX, FIIs buying strongly, Nifty positive
+    if vix_calm and fii_buying_strong and nifty_positive:
         return {
             "regime"     : "RECOVERY",
             "label"      : "🔵 RECOVERY — Best Entry Opportunities",
@@ -129,34 +151,56 @@ def detect_market_regime(global_macro, fii_dii_data):
             }
         }
 
-    # BULL_TRENDING: VIX calm, FIIs buying or neutral, market positive
-    if india_vix and india_vix <= REGIME_CFG["vix_normal"] and \
-       (nifty_chg is None or nifty_chg >= -0.5):
-        if fii_net and fii_net > 0:
-            return {
-                "regime"     : "BULL_TRENDING",
-                "label"      : "🟢 BULL TRENDING — Normal Operations",
-                "color"      : "#1B5E20",
-                "text_color" : "white",
-                "description": (
-                    f"VIX at {india_vix} (calm). "
-                    f"FII buying ₹{fii_net:,.0f} Cr. "
-                    "Healthy bull market conditions. Momentum strategies performing well."
-                ),
-                "recommendation": (
-                    "✅ Standard analysis applies. "
-                    "Follow the scoring system recommendations normally. "
-                    "Momentum and quality both work in this regime. "
-                    "Full position sizes appropriate for high-conviction picks."
-                ),
-                "signals"    : {
-                    "vix": india_vix, "nifty_change": nifty_chg,
-                    "fii_net": fii_net, "sp500_change": sp500_chg
-                }
+    # BULL_TRENDING: VIX calm/normal, market not crashing, FIIs buying
+    if vix_normal and nifty_stable and fii_buying:
+        return {
+            "regime"     : "BULL_TRENDING",
+            "label"      : "🟢 BULL TRENDING — Normal Operations",
+            "color"      : "#1B5E20",
+            "text_color" : "white",
+            "description": (
+                f"VIX at {india_vix} (calm). "
+                f"FII buying ₹{fii_net:,.0f} Cr. "
+                "Healthy bull market conditions. Momentum strategies performing well."
+            ),
+            "recommendation": (
+                "✅ Standard analysis applies. "
+                "Follow the scoring system recommendations normally. "
+                "Momentum and quality both work in this regime. "
+                "Full position sizes appropriate for high-conviction picks."
+            ),
+            "signals"    : {
+                "vix": india_vix, "nifty_change": nifty_chg,
+                "fii_net": fii_net, "sp500_change": sp500_chg
             }
+        }
+
+    # BULL_TRENDING (FII data unknown but VIX calm + market stable)
+    # Handles the case where FII data is unavailable (weekend, pre-6:30 PM)
+    if vix_normal and nifty_stable and not fii_is_known:
+        return {
+            "regime"     : "BULL_TRENDING",
+            "label"      : "🟢 BULL TRENDING — FII Data Pending",
+            "color"      : "#1B5E20",
+            "text_color" : "white",
+            "description": (
+                f"VIX at {india_vix} (calm). "
+                "FII/DII data not yet available (published after 6:30 PM IST). "
+                "Technical conditions support a normal bull environment."
+            ),
+            "recommendation": (
+                "✅ Standard analysis applies. "
+                "FII data unavailable — check NSE after 6:30 PM for confirmation. "
+                "Proceed with normal scoring thresholds."
+            ),
+            "signals"    : {
+                "vix": india_vix, "nifty_change": nifty_chg,
+                "fii_net": fii_net, "sp500_change": sp500_chg
+            }
+        }
 
     # BULL_VOLATILE: Positive but choppy
-    if india_vix and REGIME_CFG["vix_normal"] < india_vix <= REGIME_CFG["vix_caution"]:
+    if vix_volatile:
         return {
             "regime"     : "BULL_VOLATILE",
             "label"      : "🟡 BULL VOLATILE — Selective Approach",
@@ -179,7 +223,7 @@ def detect_market_regime(global_macro, fii_dii_data):
             }
         }
 
-    # SIDEWAYS: Default when signals are mixed
+    # SIDEWAYS: Default when signals are truly mixed or VIX unknown
     return {
         "regime"     : "SIDEWAYS",
         "label"      : "🟠 SIDEWAYS — Mixed Signals",
