@@ -41,6 +41,53 @@ from ai_brain        import setup_gemini, analyse_top_stocks, get_macro_context
 
 IST = pytz.timezone("Asia/Kolkata")
 
+PROGRESS_FILE = "agent_progress.json"
+
+
+# ─────────────────────────────────────────────────────────────
+# LIVE PROGRESS TRACKER
+# Writes a small JSON file at every step so app.py can display
+# exactly what is happening in real time.
+# ─────────────────────────────────────────────────────────────
+
+def write_progress(step, total_steps, message, status="running", detail=""):
+    """
+    Writes current progress to agent_progress.json.
+    app.py reads this file and shows it in the sidebar.
+
+    Args:
+        step:        current step number (e.g. 3)
+        total_steps: total steps (9)
+        message:     short step description shown in UI
+        status:      "running" | "done" | "error"
+        detail:      extra detail line (e.g. "Fetched 187/200 stocks")
+    """
+    now = datetime.now(IST)
+    progress = {
+        "step"        : step,
+        "total_steps" : total_steps,
+        "message"     : message,
+        "status"      : status,
+        "detail"      : detail,
+        "pct"         : int((step / total_steps) * 100),
+        "updated_at"  : now.strftime("%I:%M:%S %p IST"),
+        "updated_ts"  : now.isoformat(),
+    }
+    try:
+        with open(PROGRESS_FILE, "w") as f:
+            json.dump(progress, f)
+    except Exception:
+        pass  # Non-fatal — don't let progress writing crash the agent
+
+
+def clear_progress():
+    """Removes the progress file once the run is complete."""
+    try:
+        if os.path.exists(PROGRESS_FILE):
+            os.remove(PROGRESS_FILE)
+    except Exception:
+        pass
+
 
 # ─────────────────────────────────────────────────────────────
 # HELPER: GET API KEY (works on both local and Streamlit Cloud)
@@ -96,12 +143,14 @@ def run_agent(quick_mode=False):
     MAIN FUNCTION: Runs the complete analysis pipeline.
 
     Args:
-        quick_mode: If True, only analyses top 20 stocks (faster for testing)
+        quick_mode: If True, only analyses top 30 stocks (faster for testing)
 
     Returns:
         briefing dict (also saved to JSON file)
     """
-    start_time = datetime.now(IST)
+    TOTAL_STEPS = 9
+    start_time  = datetime.now(IST)
+
     print(f"\n{'='*60}")
     print(f"🤖 NIFTY 200 AI ADVISOR — Starting Analysis")
     print(f"⏰  Time: {start_time.strftime('%d %b %Y, %I:%M %p IST')}")
@@ -116,88 +165,124 @@ def run_agent(quick_mode=False):
 
     try:
         # ── STEP 1: Get stock list ───────────────────────────
+        write_progress(1, TOTAL_STEPS, "📋 Fetching Nifty 200 stock list from NSE…")
         print("STEP 1: Getting Nifty 200 stock list...")
         stocks = get_nifty200_stocks()
         if quick_mode:
-            stocks = stocks[:30]  # Test with 30 stocks
+            stocks = stocks[:30]
             print(f"   (Quick mode: using {len(stocks)} stocks)")
         briefing["total_stocks"] = len(stocks)
+        write_progress(1, TOTAL_STEPS, "📋 Stock list ready",
+                       detail=f"{len(stocks)} stocks loaded")
 
         # ── STEP 2: Fetch global macro ───────────────────────
+        write_progress(2, TOTAL_STEPS, "🌍 Fetching global macro data (VIX, crude, indices)…")
         print("\nSTEP 2: Fetching global macro data...")
         global_macro = get_global_macro()
         briefing["global_macro"] = global_macro
+        write_progress(2, TOTAL_STEPS, "🌍 Global macro ready",
+                       detail=f"{len(global_macro)} indicators fetched")
 
         # ── STEP 3: FII/DII data ─────────────────────────────
+        write_progress(3, TOTAL_STEPS, "🏦 Fetching FII/DII institutional flows from NSE…")
         print("\nSTEP 3: Fetching FII/DII institutional flows...")
         fii_dii_data = get_fii_dii_data()
         briefing["fii_dii"] = fii_dii_data
+        fii_val = fii_dii_data.get("fii_net_cr")
+        write_progress(3, TOTAL_STEPS, "🏦 FII/DII data ready",
+                       detail=f"FII: ₹{fii_val} Cr" if fii_val is not None else "FII data unavailable (normal before 6:30 PM)")
 
         # ── STEP 4: Detect market regime ─────────────────────
+        write_progress(4, TOTAL_STEPS, "🔍 Detecting market regime…")
         print("\nSTEP 4: Detecting market regime...")
         regime = detect_market_regime(global_macro, fii_dii_data)
         briefing["market_regime"] = regime
         print(f"   Regime: {regime['label']}")
+        write_progress(4, TOTAL_STEPS, "🔍 Market regime detected",
+                       detail=regime.get("label", ""))
 
         # ── STEP 5: Check if we should trade today ───────────
         should_trade, no_trade_reason = should_generate_recommendations(regime)
         if not should_trade:
+            write_progress(TOTAL_STEPS, TOTAL_STEPS,
+                           "⛔ No Trade Day — analysis complete",
+                           status="done", detail=no_trade_reason)
             print(f"\n⛔ NO TRADE TODAY: {no_trade_reason}")
-            briefing["status"]           = "no_trade"
-            briefing["no_trade_reason"]  = no_trade_reason
-            briefing["top_picks"]        = []
-            briefing["macro_context"]    = None
+            briefing["status"]          = "no_trade"
+            briefing["no_trade_reason"] = no_trade_reason
+            briefing["top_picks"]       = []
+            briefing["macro_context"]   = None
             save_briefing(briefing)
+            clear_progress()
             return briefing
 
         # ── STEP 6: Fetch market news ─────────────────────────
+        write_progress(5, TOTAL_STEPS, "📰 Fetching market news from RSS feeds…")
         print("\nSTEP 5: Fetching market news...")
         market_news = get_market_news(max_per_feed=8)
         briefing["market_news_count"] = len(market_news)
+        write_progress(5, TOTAL_STEPS, "📰 News fetched",
+                       detail=f"{len(market_news)} articles loaded")
 
         # ── STEP 7: Get all stock data ───────────────────────
-        print("\nSTEP 6: Fetching stock data (this takes 10-15 min)...")
-        max_stocks = 30 if quick_mode else None
-        stocks_data = get_all_stocks_data(stocks, max_stocks=max_stocks)
+        n_stocks = 30 if quick_mode else len(stocks)
+        write_progress(6, TOTAL_STEPS,
+                       f"📊 Fetching price & fundamental data for {n_stocks} stocks…",
+                       detail="This is the slowest step — ~1 sec per stock")
+        print(f"\nSTEP 6: Fetching stock data for {n_stocks} stocks...")
+        stocks_data = get_all_stocks_data(stocks, max_stocks=30 if quick_mode else None)
 
         if not stocks_data:
-            raise ValueError("No stock data fetched — check internet connection")
+            raise ValueError(
+                "No stock data fetched. "
+                "Possible causes: (1) Yahoo Finance rate-limited, "
+                "(2) No internet access from Streamlit Cloud, "
+                "(3) All symbols returned empty history."
+            )
+        write_progress(6, TOTAL_STEPS, "📊 Stock data ready",
+                       detail=f"{len(stocks_data)}/{n_stocks} stocks fetched successfully")
 
         # ── STEP 8: Score all stocks ─────────────────────────
+        write_progress(7, TOTAL_STEPS, "🎯 Scoring all stocks (0–100)…")
         print("\nSTEP 7: Scoring all stocks...")
-        # Placeholder sentiment scores (updated after news fetch)
         scored_stocks = score_all_stocks(
             stocks_data,
             fii_dii_data=fii_dii_data,
             sentiment_scores={}
         )
 
-        # Save all scores (even without AI)
+        # Save all scores
         briefing["all_scores"] = [
             {
-                "symbol"      : s["symbol"],
-                "company_name": s["company_name"],
-                "sector"      : s["sector"],
-                "score"       : s["score"],
-                "signal"      : s["signal"],
-                "confidence"  : s["confidence"],
+                "symbol"       : s["symbol"],
+                "company_name" : s["company_name"],
+                "sector"       : s["sector"],
+                "score"        : s["score"],
+                "signal"       : s["signal"],
+                "confidence"   : s["confidence"],
                 "current_price": s["current_price"],
-                "pe_ratio"    : s["pe_ratio"],
-                "roe_pct"     : s["roe_pct"],
-                "rsi"         : s["rsi"],
-                "ret_1m_pct"  : s["ret_1m_pct"],
-                "ret_3m_pct"  : s["ret_3m_pct"],
-                "anomalies"   : s["anomalies"],
+                "pe_ratio"     : s["pe_ratio"],
+                "roe_pct"      : s["roe_pct"],
+                "rsi"          : s["rsi"],
+                "ret_1m_pct"   : s["ret_1m_pct"],
+                "ret_3m_pct"   : s["ret_3m_pct"],
+                "anomalies"    : s["anomalies"],
             }
             for s in scored_stocks
         ]
 
+        buy_ct   = sum(1 for s in scored_stocks if s["signal"] == "BUY")
+        watch_ct = sum(1 for s in scored_stocks if s["signal"] == "WATCH")
+        write_progress(7, TOTAL_STEPS, "🎯 Scoring complete",
+                       detail=f"BUY: {buy_ct} | WATCH: {watch_ct} | AVOID: {len(scored_stocks)-buy_ct-watch_ct}")
+
         # Top stocks for AI analysis
-        n_for_ai    = ANALYSIS["stocks_for_ai_analysis"]
-        top_stocks  = [s for s in scored_stocks if s["signal"] in ["BUY", "WATCH"]][:n_for_ai]
-        top_show    = scored_stocks[:ANALYSIS["top_picks_to_show"]]
+        n_for_ai   = ANALYSIS["stocks_for_ai_analysis"]
+        top_stocks = [s for s in scored_stocks if s["signal"] in ["BUY", "WATCH"]][:n_for_ai]
 
         # ── STEP 9: Fetch news for top stocks ────────────────
+        write_progress(8, TOTAL_STEPS,
+                       f"📰 Fetching news for top {len(top_stocks)} stocks…")
         print(f"\nSTEP 8: Fetching news for top {len(top_stocks)} stocks...")
         news_map, sentiment_scores = get_news_for_top_stocks(
             top_stocks_data=top_stocks,
@@ -216,14 +301,15 @@ def run_agent(quick_mode=False):
         api_key = get_api_key()
 
         if api_key:
+            write_progress(9, TOTAL_STEPS,
+                           f"🤖 Running Gemini AI analysis on top {len(top_stocks)} stocks…",
+                           detail=f"Model: {AI_SETTINGS['model']}")
             print("\nSTEP 9: Running Gemini AI analysis...")
             model = setup_gemini(api_key)
 
-            # Macro context
             macro_context = get_macro_context(model, market_news, global_macro, regime)
             briefing["macro_context"] = macro_context
 
-            # Stock analysis
             top_picks_with_ai = analyse_top_stocks(
                 model       = model,
                 top_stocks  = top_stocks,
@@ -235,26 +321,27 @@ def run_agent(quick_mode=False):
             briefing["top_picks"] = top_picks_with_ai
 
         else:
+            write_progress(9, TOTAL_STEPS,
+                           "⚠️ No Gemini API key — skipping AI analysis",
+                           detail="Add GEMINI_API_KEY to Streamlit Secrets to enable AI")
             print("\n⚠️  No Gemini API key found — skipping AI analysis")
-            print("   Add GEMINI_API_KEY to Streamlit Secrets to enable AI analysis")
-            # Still show top picks without AI analysis
-            briefing["top_picks"]    = [
+            briefing["top_picks"] = [
                 {
-                    "symbol"      : s["symbol"],
-                    "company_name": s["company_name"],
-                    "sector"      : s["sector"],
-                    "score"       : s["score"],
-                    "signal"      : s["signal"],
+                    "symbol"       : s["symbol"],
+                    "company_name" : s["company_name"],
+                    "sector"       : s["sector"],
+                    "score"        : s["score"],
+                    "signal"       : s["signal"],
                     "current_price": s["current_price"],
-                    "evidence"    : s["evidence"],
-                    "anomalies"   : s["anomalies"],
-                    "ai_analysis" : None,
+                    "evidence"     : s["evidence"],
+                    "anomalies"    : s["anomalies"],
+                    "ai_analysis"  : None,
                 }
                 for s in top_stocks[:ANALYSIS["top_picks_to_show"]]
             ]
             briefing["macro_context"] = None
 
-        # ── FINAL: Complete the briefing ─────────────────────
+        # ── FINAL ─────────────────────────────────────────────
         end_time = datetime.now(IST)
         duration = (end_time - start_time).seconds // 60
 
@@ -263,6 +350,11 @@ def run_agent(quick_mode=False):
         briefing["completed_at_str"] = end_time.strftime("%d %b %Y, %I:%M %p IST")
         briefing["duration_minutes"] = duration
         briefing["stocks_scored"]    = len(scored_stocks)
+
+        write_progress(TOTAL_STEPS, TOTAL_STEPS,
+                       "✅ Analysis complete! Refresh the page to see results.",
+                       status="done",
+                       detail=f"{len(scored_stocks)} stocks scored in {duration} min")
 
         print(f"\n{'='*60}")
         print(f"✅ ANALYSIS COMPLETE in {duration} minutes")
@@ -274,13 +366,18 @@ def run_agent(quick_mode=False):
         error_msg = traceback.format_exc()
         print(f"\n❌ CRITICAL ERROR: {e}")
         print(error_msg)
+        write_progress(0, TOTAL_STEPS,
+                       f"❌ Error: {str(e)[:120]}",
+                       status="error",
+                       detail=error_msg[:300])
         briefing["status"] = "error"
         briefing["errors"].append(str(e))
-        briefing["top_picks"]    = []
-        briefing["macro_context"]= None
+        briefing["top_picks"]     = []
+        briefing["macro_context"] = None
 
-    # Always save (even on error — so Streamlit shows something)
+    # Always save (even on error)
     save_briefing(briefing)
+    # Keep progress file for a moment then let app.py decide when to clear it
     return briefing
 
 
@@ -289,7 +386,6 @@ def run_agent(quick_mode=False):
 # ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Check for quick mode flag
     quick = "--quick" in sys.argv or "-q" in sys.argv
 
     if quick:
@@ -299,7 +395,6 @@ if __name__ == "__main__":
 
     result = run_agent(quick_mode=quick)
 
-    # Summary
     print(f"\n📊 FINAL STATUS: {result.get('status', 'unknown').upper()}")
     if result.get("top_picks"):
         print(f"   Top picks: {len(result['top_picks'])}")
