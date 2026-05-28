@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from datetime import datetime
 import pytz
 import traceback
@@ -43,6 +44,24 @@ def load_briefing():
     except Exception as e:
         st.error(f"Error loading briefing: {e}")
     return None
+
+
+# ── Background runner (FIX #5) ───────────────────────────────
+def _run_in_background(args):
+    """
+    Launches agent.py as a daemon thread so Streamlit's HTTP connection
+    is not held open. Streamlit Cloud kills HTTP connections after ~60s,
+    which caused the 'Run Analysis' button to silently fail even though
+    the subprocess was still running (or had been killed by the platform).
+
+    The agent writes latest_briefing.json when done. The user refreshes
+    the page to see results — no long-polling needed.
+    """
+    try:
+        subprocess.run(args, timeout=14400)   # 4-hour hard cap
+    except Exception:
+        pass  # Errors are logged by agent.py itself to stdout/stderr
+
 
 # ── Custom CSS ───────────────────────────────────────────────
 st.markdown("""
@@ -93,39 +112,43 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🤖 AI Advisor Controls")
 
-    # Manual run button
+    # ── Full Analysis button ──────────────────────────────────
+    # FIX #5: Was subprocess.run(..., timeout=14800) — this held the HTTP
+    # connection open for up to 4 hours. Streamlit Cloud closes connections
+    # after ~60s, causing a silent failure. Now we fire-and-forget via a
+    # daemon thread. The user refreshes after ~15-20 min to see results.
     if st.button("▶️ Run Analysis Now", type="primary", use_container_width=True):
-        with st.spinner("Running analysis... (1-3 hours for full run)"):
-            try:
-                result = subprocess.run(
-                    [sys.executable, "agent.py"],
-                    capture_output=True, text=True, timeout=14800
-                )
-                if result.returncode == 0:
-                    st.success("✅ Analysis complete! Refresh the page.")
-                else:
-                    st.error(f"Analysis failed: {result.stderr[:500]}")
-            except subprocess.TimeoutExpired:
-                st.error("Analysis timed out after 3 hours")
-            except Exception as e:
-                st.error(f"Error: {e}")
+        t = threading.Thread(
+            target=_run_in_background,
+            args=([sys.executable, "agent.py"],),
+            daemon=True
+        )
+        t.start()
+        st.success(
+            "✅ Full analysis started in background!  \n"
+            "This takes **15–20 minutes** for all 200 stocks.  \n"
+            "Come back and **refresh the page** when done.  \n\n"
+            "💡 *Tip: Use GitHub Actions for scheduled daily runs — "
+            "more reliable than this button.*"
+        )
 
     st.markdown("---")
 
-    # Quick test button
+    # ── Quick Test button ─────────────────────────────────────
+    # FIX #5 (same): Was also blocking subprocess.run with a 4000s timeout.
+    # Quick test is ~5 min — still over Streamlit's 60s HTTP limit on Cloud.
     if st.button("⚡ Quick Test (30 stocks)", use_container_width=True):
-        with st.spinner("Quick test running..."):
-            try:
-                result = subprocess.run(
-                    [sys.executable, "agent.py", "--quick"],
-                    capture_output=True, text=True, timeout=4000
-                )
-                if result.returncode == 0:
-                    st.success("✅ Done! Refresh page.")
-                else:
-                    st.error(result.stderr[:300])
-            except Exception as e:
-                st.error(f"Error: {e}")
+        t = threading.Thread(
+            target=_run_in_background,
+            args=([sys.executable, "agent.py", "--quick"],),
+            daemon=True
+        )
+        t.start()
+        st.success(
+            "✅ Quick test started in background!  \n"
+            "30 stocks — takes about **5 minutes**.  \n"
+            "**Refresh the page** after 5 minutes to see results."
+        )
 
     st.markdown("---")
     st.markdown("### ℹ️ About")
@@ -134,7 +157,7 @@ with st.sidebar:
     - Covers all Nifty 200 stocks
     - Runs daily at 8:30 AM IST
     - Powered by Google Gemini AI
-    - Data from Fyers + NSE + yFinance
+    - Data from NSE + yFinance
     
     *Not financial advice. Always apply
     your own judgment before trading.*
@@ -160,12 +183,12 @@ if not briefing:
 
     **To generate your first briefing:**
     1. Click **'Quick Test (30 stocks)'** in the sidebar to test with 30 stocks
-    2. Wait 5-10 minutes for it to complete
-    3. Refresh this page
+    2. Wait 5 minutes, then **refresh this page**
+    3. If it worked, run the full analysis
 
     **For full Nifty 200 analysis:**
-    - Click **'Run Analysis Now'** (takes 15-20 minutes)
-    - Or wait for automatic 8:30 AM run
+    - Click **'Run Analysis Now'** (takes 15-20 minutes, then refresh)
+    - Or wait for automatic 8:30 AM run via GitHub Actions
 
     **First time? Make sure you've added your API keys in Streamlit Secrets!**
     """)
