@@ -397,16 +397,27 @@ def score_stock(stock, fii_dii_data=None, sentiment_scores=None):
 def score_all_stocks(stocks_data, fii_dii_data=None, sentiment_scores=None):
     """
     Scores all stocks and returns them sorted by score (highest first).
+
+    FIX #2: Replaced silent 'except: pass' with logging + counter.
+    Previously, any error inside score_stock() was completely swallowed,
+    producing an empty result list with no visible error — the root cause
+    of the silent crash where the app showed 0 stocks scored.
     """
     print(f"\n🎯 Scoring {len(stocks_data)} stocks...")
-    scored = []
+    scored       = []
+    failed_count = 0
 
     for stock in stocks_data:
         try:
             result = score_stock(stock, fii_dii_data, sentiment_scores)
             scored.append(result)
         except Exception as e:
-            pass
+            failed_count += 1
+            symbol = stock.get("symbol", "UNKNOWN") if isinstance(stock, dict) else "UNKNOWN"
+            print(f"  ⚠ Scoring failed for {symbol}: {type(e).__name__}: {e}")
+
+    if failed_count:
+        print(f"  ⚠ Total scoring failures: {failed_count}/{len(stocks_data)} stocks")
 
     # Sort by score descending
     scored.sort(key=lambda x: x["score"], reverse=True)
@@ -420,5 +431,7 @@ def score_all_stocks(stocks_data, fii_dii_data=None, sentiment_scores=None):
     print(f"   🟢 BUY:   {buy_count} stocks")
     print(f"   🟡 WATCH: {watch_count} stocks")
     print(f"   🔴 AVOID: {avoid_count} stocks")
+    if failed_count:
+        print(f"   ❌ FAILED: {failed_count} stocks (see errors above)")
 
     return scored
