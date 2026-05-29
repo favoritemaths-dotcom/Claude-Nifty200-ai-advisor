@@ -17,6 +17,9 @@ import threading
 from datetime import datetime
 import pytz
 import traceback
+
+from background_worker import launch_agent_job, get_runtime_snapshot
+
 try:
     import config  # test import all your modules
     import scoring
@@ -34,6 +37,9 @@ st.set_page_config(
 )
 
 IST = pytz.timezone("Asia/Kolkata")
+runtime_state = get_runtime_snapshot()
+if runtime_state.get("status") == "running":
+    st.markdown('<meta http-equiv="refresh" content="8">', unsafe_allow_html=True)
 
 # ── Load the briefing data ───────────────────────────────────
 def load_briefing():
@@ -46,7 +52,37 @@ def load_briefing():
     return None
 
 
+def _runtime_snapshot():
+    """Merged run state for the sidebar and auto-refresh logic."""
+    return get_runtime_snapshot()
+
+
+def _runtime_banner(runtime):
+    """Show job status in the sidebar."""
+    if not runtime:
+        return
+    status = (runtime.get("status") or "idle").lower()
+    if status == "running":
+        message = runtime.get("message") or "Analysis running in background"
+        detail = runtime.get("detail") or "Please wait and refresh this page."
+        pct = (runtime.get("progress") or {}).get("pct")
+        st.sidebar.info(f"{message}\n\n{detail}")
+        if isinstance(pct, int):
+            st.sidebar.progress(min(max(pct, 0), 100) / 100)
+    elif status == "done":
+        st.sidebar.success("Last run completed successfully.")
+    elif status == "error":
+        st.sidebar.error(runtime.get("detail") or "Background job failed")
+
+
 # ── Background runner (FIX #5) ───────────────────────────────
+
+def _run_in_background(args):
+    """Compatibility wrapper used by the existing button handlers."""
+    quick_mode = any(str(a).endswith("--quick") for a in args)
+    launch_agent_job(quick_mode=quick_mode)
+
+
 def _run_in_background(args):
     """
     Launches agent.py as a daemon thread so Streamlit's HTTP connection
@@ -151,6 +187,8 @@ with st.sidebar:
         )
 
     st.markdown("---")
+    runtime_state = _runtime_snapshot()
+    _runtime_banner(runtime_state)
     st.markdown("### ℹ️ About")
     st.markdown("""
     **Nifty 200 AI Advisor**
@@ -178,20 +216,35 @@ st.markdown("""
 briefing = load_briefing()
 
 if not briefing:
-    st.info("""
-    ### 👋 Welcome! No briefing found yet.
+    if runtime_state.get("status") == "running":
+        st.info("""
+        ### ⏳ Analysis is running now
 
-    **To generate your first briefing:**
-    1. Click **'Quick Test (30 stocks)'** in the sidebar to test with 30 stocks
-    2. Wait 5 minutes, then **refresh this page**
-    3. If it worked, run the full analysis
+        The job has started in the background. This page will refresh automatically.
+        You can safely leave this tab open and come back in a few minutes.
+        """)
+        progress = runtime_state.get("progress") or {}
+        if progress:
+            st.write(f"**Current step:** {progress.get('message', 'Running')}")
+            st.write(f"**Detail:** {progress.get('detail', 'Working...')}")
+            pct = progress.get('pct')
+            if isinstance(pct, int):
+                st.progress(min(max(pct, 0), 100) / 100)
+    else:
+        st.info("""
+        ### 👋 Welcome! No briefing found yet.
 
-    **For full Nifty 200 analysis:**
-    - Click **'Run Analysis Now'** (takes 15-20 minutes, then refresh)
-    - Or wait for automatic 8:30 AM run via GitHub Actions
+        **To generate your first briefing:**
+        1. Click **'Quick Test (30 stocks)'** in the sidebar to test with 30 stocks
+        2. Wait 5 minutes, then **refresh this page**
+        3. If it worked, run the full analysis
 
-    **First time? Make sure you've added your API keys in Streamlit Secrets!**
-    """)
+        **For full Nifty 200 analysis:**
+        - Click **'Run Analysis Now'** (takes 15-20 minutes, then refresh)
+        - Or wait for automatic 8:30 AM run via GitHub Actions
+
+        **First time? Make sure you've added your API keys in Streamlit Secrets!**
+        """)
     st.stop()
 
 # ════════════════════════════════════════════════════════════
