@@ -26,6 +26,11 @@ import traceback
 from datetime import datetime
 import pytz
 
+from progress_tracker import atomic_write_json, BRIEFING_FILE, PROGRESS_FILE
+from logger_config import get_logger, AGENT_LOG_FILE
+
+logger = get_logger("agent", AGENT_LOG_FILE)
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,17 +56,7 @@ PROGRESS_FILE = "agent_progress.json"
 # ─────────────────────────────────────────────────────────────
 
 def write_progress(step, total_steps, message, status="running", detail=""):
-    """
-    Writes current progress to agent_progress.json.
-    app.py reads this file and shows it in the sidebar.
-
-    Args:
-        step:        current step number (e.g. 3)
-        total_steps: total steps (9)
-        message:     short step description shown in UI
-        status:      "running" | "done" | "error"
-        detail:      extra detail line (e.g. "Fetched 187/200 stocks")
-    """
+    """Writes current progress to agent_progress.json atomically."""
     now = datetime.now(IST)
     progress = {
         "step"        : step,
@@ -69,13 +64,12 @@ def write_progress(step, total_steps, message, status="running", detail=""):
         "message"     : message,
         "status"      : status,
         "detail"      : detail,
-        "pct"         : int((step / total_steps) * 100),
+        "pct"         : int((step / total_steps) * 100) if total_steps else 0,
         "updated_at"  : now.strftime("%I:%M:%S %p IST"),
         "updated_ts"  : now.isoformat(),
     }
     try:
-        with open(PROGRESS_FILE, "w") as f:
-            json.dump(progress, f)
+        atomic_write_json(PROGRESS_FILE, progress)
     except Exception:
         pass  # Non-fatal — don't let progress writing crash the agent
 
@@ -150,6 +144,21 @@ def run_agent(quick_mode=False):
     """
     TOTAL_STEPS = 9
     start_time  = datetime.now(IST)
+
+    def _stock_fetch_progress(done, total, symbol, success_count, failed_count):
+        write_progress(6, TOTAL_STEPS,
+                       f"📊 Fetching price & fundamental data ({done}/{total})…",
+                       detail=f"Latest: {symbol} | success={success_count} | failed={failed_count}")
+
+    def _scoring_progress(done, total, scored_count, failed_count):
+        write_progress(7, TOTAL_STEPS,
+                       f"🎯 Scoring stocks ({done}/{total})…",
+                       detail=f"Scored={scored_count} | failed={failed_count}")
+
+    def _news_progress(done, total, symbol, article_count):
+        write_progress(8, TOTAL_STEPS,
+                       f"📰 Fetching news for top stocks ({done}/{total})…",
+                       detail=f"Latest: {symbol} | articles={article_count}")
 
     print(f"\n{'='*60}")
     print(f"🤖 NIFTY 200 AI ADVISOR — Starting Analysis")
@@ -230,7 +239,7 @@ def run_agent(quick_mode=False):
                        f"📊 Fetching price & fundamental data for {n_stocks} stocks…",
                        detail="This is the slowest step — ~1 sec per stock")
         print(f"\nSTEP 6: Fetching stock data for {n_stocks} stocks...")
-        stocks_data = get_all_stocks_data(stocks, max_stocks=30 if quick_mode else None)
+        stocks_data = get_all_stocks_data(stocks, max_stocks=30 if quick_mode else None, progress_cb=_stock_fetch_progress)
 
         if not stocks_data:
             raise ValueError(
@@ -248,7 +257,8 @@ def run_agent(quick_mode=False):
         scored_stocks = score_all_stocks(
             stocks_data,
             fii_dii_data=fii_dii_data,
-            sentiment_scores={}
+            sentiment_scores={},
+            progress_cb=_scoring_progress
         )
 
         # Save all scores
@@ -286,14 +296,16 @@ def run_agent(quick_mode=False):
         print(f"\nSTEP 8: Fetching news for top {len(top_stocks)} stocks...")
         news_map, sentiment_scores = get_news_for_top_stocks(
             top_stocks_data=top_stocks,
-            max_per_stock  =3
+            max_per_stock  =3,
+            progress_cb=_news_progress
         )
 
         # Re-score with sentiment
         scored_stocks = score_all_stocks(
             stocks_data,
             fii_dii_data    =fii_dii_data,
-            sentiment_scores=sentiment_scores
+            sentiment_scores=sentiment_scores,
+            progress_cb=_scoring_progress
         )
         top_stocks = [s for s in scored_stocks if s["signal"] in ["BUY", "WATCH"]][:n_for_ai]
 
