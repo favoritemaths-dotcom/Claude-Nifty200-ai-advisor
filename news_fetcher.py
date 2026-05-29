@@ -148,7 +148,7 @@ def check_manipulation_signals(text):
 # 4. FULL NEWS FETCH FOR TOP STOCKS
 # ─────────────────────────────────────────────────────────────
 
-def get_news_for_top_stocks(top_stocks_data, max_per_stock=3):
+def get_news_for_top_stocks(top_stocks_data, max_per_stock=3, progress_cb=None):
     """
     Fetches news for the top scored stocks only (not all 200 - too slow).
     Adds sentiment scores to each article.
@@ -164,7 +164,8 @@ def get_news_for_top_stocks(top_stocks_data, max_per_stock=3):
 
     print(f"📰 Fetching news for top {len(top_stocks_data)} stocks...")
 
-    for stock in top_stocks_data:
+    total = len(top_stocks_data)
+    for idx, stock in enumerate(top_stocks_data, start=1):
         symbol       = stock.get("symbol", "")
         company_name = stock.get("company_name", symbol)
 
@@ -181,6 +182,12 @@ def get_news_for_top_stocks(top_stocks_data, max_per_stock=3):
             article["flags"]      = signals
 
         news_map[symbol] = articles
+
+        if progress_cb and (idx == 1 or idx % 2 == 0 or idx == total):
+            try:
+                progress_cb(idx, total, symbol, len(articles))
+            except Exception:
+                pass
 
         # Small delay between requests
         time.sleep(0.5)
