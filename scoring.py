@@ -394,7 +394,7 @@ def score_stock(stock, fii_dii_data=None, sentiment_scores=None):
     }
 
 
-def score_all_stocks(stocks_data, fii_dii_data=None, sentiment_scores=None):
+def score_all_stocks(stocks_data, fii_dii_data=None, sentiment_scores=None, progress_cb=None):
     """
     Scores all stocks and returns them sorted by score (highest first).
 
@@ -407,7 +407,7 @@ def score_all_stocks(stocks_data, fii_dii_data=None, sentiment_scores=None):
     scored       = []
     failed_count = 0
 
-    for stock in stocks_data:
+    for idx, stock in enumerate(stocks_data, start=1):
         try:
             result = score_stock(stock, fii_dii_data, sentiment_scores)
             scored.append(result)
@@ -415,6 +415,12 @@ def score_all_stocks(stocks_data, fii_dii_data=None, sentiment_scores=None):
             failed_count += 1
             symbol = stock.get("symbol", "UNKNOWN") if isinstance(stock, dict) else "UNKNOWN"
             print(f"  ⚠ Scoring failed for {symbol}: {type(e).__name__}: {e}")
+        finally:
+            if progress_cb and (idx == 1 or idx % 10 == 0 or idx == len(stocks_data)):
+                try:
+                    progress_cb(idx, len(stocks_data), len(scored), failed_count)
+                except Exception:
+                    pass
 
     if failed_count:
         print(f"  ⚠ Total scoring failures: {failed_count}/{len(stocks_data)} stocks")
