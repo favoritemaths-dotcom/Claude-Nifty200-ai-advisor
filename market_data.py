@@ -429,7 +429,7 @@ def get_fii_dii_data():
 # 6. BATCH STOCK DATA FETCHER
 # ─────────────────────────────────────────────────────────────
 
-def get_all_stocks_data(symbols, max_stocks=None):
+def get_all_stocks_data(symbols, max_stocks=None, progress_cb=None):
     """
     Main function — fetches technical + fundamental data for
     all Nifty 200 stocks. Shows progress.
@@ -465,15 +465,20 @@ def get_all_stocks_data(symbols, max_stocks=None):
         if tech is None and fund is None:
             failed.append(symbol)
             skipped += 1
-            continue
+        else:
+            # Merge technical and fundamental data
+            stock_data = {}
+            if tech:  stock_data.update(tech)
+            if fund:  stock_data.update({k: v for k, v in fund.items() if k != "symbol"})
 
-        # Merge technical and fundamental data
-        stock_data = {}
-        if tech:  stock_data.update(tech)
-        if fund:  stock_data.update({k: v for k, v in fund.items() if k != "symbol"})
+            if stock_data:
+                results.append(stock_data)
 
-        if stock_data:
-            results.append(stock_data)
+        if progress_cb and ((i + 1) % 5 == 0 or i + 1 == total):
+            try:
+                progress_cb(i + 1, total, symbol, len(results), len(failed))
+            except Exception:
+                pass
 
         # FIX: Increased delay from 0.3s to 1.0s to avoid Yahoo Finance rate limiting.
         # At 200 stocks × 1.0s = ~3.3 min extra. Worth it to prevent 150+ silent failures.
